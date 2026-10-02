@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Decision Duel</title>
+    <style>
+      :root {
+        --bg: #07070d;
+        --panel: #10111c;
+        --line: #232538;
+        --text: #e6e6f0;
+        --muted: #8a8ca6;
+        --accent: #78ffaa;
+        --warn: #ff6b6b;
+        --card: #181a29;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+      .app {
+        display: flex;
+        gap: 16px;
+        padding: 16px;
+        justify-content: center;
+        align-items: flex-start;
+        flex-wrap: wrap;
+      }
+      .table { width: 460px; max-width: 100%; display: flex; flex-direction: column; gap: 10px; }
+      .side { width: 380px; display: flex; flex-direction: column; gap: 12px; }
+      .card-panel { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; }
+      .card-panel h2 { margin: 0 0 8px; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+      .muted { color: var(--muted); }
+      .combatant .name { font-size: 15px; font-weight: 700; margin-bottom: 2px; }
+      .combatant .status { color: var(--muted); margin-bottom: 4px; }
+      .hpbar { height: 12px; background: #1b1c2b; border-radius: 3px; overflow: hidden; }
+      .hpfill { height: 100%; background: #4a5bd6; }
+      .enemy .hpfill { background: #b64a5a; }
+      .banner { text-align: center; font-size: 16px; font-weight: 700; padding: 6px; border-radius: 6px; }
+      .banner.win { color: var(--accent); border: 1px solid #1e4a32; }
+      .banner.lose { color: var(--warn); border: 1px solid #5c2a2a; }
+      .hand { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+      button.card {
+        display: flex; flex-direction: column; gap: 2px; align-items: flex-start;
+        background: var(--card); color: var(--text); border: 1px solid var(--line);
+        border-radius: 6px; padding: 8px; cursor: pointer; font: inherit; text-align: left;
+      }
+      button.card:hover:not(:disabled) { border-color: #3a3d5c; }
+      button.card:disabled { opacity: 0.55; cursor: default; }
+      button.card span { color: var(--muted); font-size: 11px; }
+      button.card kbd { align-self: flex-end; color: var(--muted); font-size: 10px; }
+      .gamelog { min-height: 120px; max-height: 160px; overflow: auto; color: var(--muted); font-size: 11px; }
+      .controls { display: grid; grid-template-columns: 80px 1fr; gap: 6px 8px; align-items: center; }
+      input, select, button.action {
+        font: inherit; color: var(--text); background: #181a29; border: 1px solid var(--line); border-radius: 4px; padding: 4px 6px;
+      }
+      button.action { cursor: pointer; }
+      button.action:hover { border-color: #3a3d5c; }
+      .buttons { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+      .modelrow { display: flex; gap: 6px; }
+      .modelrow select { flex: 1; min-width: 0; }
+      .error { border-color: #5c2a2a; color: var(--warn); display: none; }
+      .error.show { display: block; }
+      .error .hint { color: var(--text); margin-top: 4px; }
+      .prob { display: grid; grid-template-columns: 30px 1fr 48px; gap: 8px; align-items: center; margin: 3px 0; }
+      .prob .track { height: 12px; background: #1b1c2b; border-radius: 3px; overflow: hidden; }
+      .prob .fill { height: 100%; background: #4a5bd6; }
+      .prob.chosen .fill { background: var(--accent); }
+      .help { color: var(--muted); font-size: 11px; }
+      @media (max-width: 1000px) { .side, .table { width: 100%; max-width: 560px; } }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <div class="table">
+        <div class="card-panel" id="table"></div>
+        <div class="card-panel error" id="error">
+          <div id="error-message"></div>
+          <div class="hint" id="error-hint"></div>
+        </div>
+      </div>
+      <div class="side">
+        <div class="card-panel">
+          <h2>Last decision</h2>
+          <div class="row muted"><span id="who">-</span></div>
+          <div id="bars"></div>
+        </div>
+        <div class="card-panel">
+          <h2>Controls</h2>
+          <div class="controls">
+            <label for="side">Your side</label>
+            <select id="side">
+              <option value="human">Human (click cards, keys 1-4)</option>
+              <option value="ai">Model</option>
+            </select>
+            <label for="model">Model</label>
+            <div class="modelrow">
+              <select id="model">
+                <option value="tev1:0.8b" selected>tev1:0.8b</option>
+                <option value="tev1:4b">tev1:4b</option>
+                <option value="greedy">greedy</option>
+                <option value="random">random</option>
+                <option value="oracle-6t">oracle-6t</option>
+                <option value="__custom__">Custom…</option>
+              </select>
+              <button class="action" id="models-refresh" title="Reload the model list from the endpoint">↻</button>
+            </div>
+            <label for="enemy">Foe</label>
+            <select id="enemy">
+              <option value="brute">Brute</option>
+              <option value="warden">Warden</option>
+            </select>
+            <label for="seed">Seed</label>
+            <input id="seed" inputmode="numeric" />
+          </div>
+          <div class="buttons">
+            <button class="action" id="new">New duel</button>
+            <button class="action" id="export">Download log</button>
+          </div>
+          <p class="help">Turn-based: the duel waits for every answer, so any model can play — including thinking and cloud models via <code>llm-think:</code>. Keys 1-4 play cards in human mode.</p>
+        </div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
